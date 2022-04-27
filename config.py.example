@@ -1,0 +1,37 @@
+loglevel: int = 20
+github_url: str = "https://github.com/Charahiro-tan/twitch-user-checker"
+
+# アプリのID
+client_id: str = ""
+client_secret: str = ""
+
+# チェッカーのID
+checker_client_id: str = ""
+checker_client_secret: str = ""
+
+# webサーバー
+server_port: int = 5000
+redirect_uri: str = ""
+ban_scope: set = {
+    "moderator:manage:banned_users",
+    "moderation:read",
+}
+block_scope: set = {
+    "user:manage:blocked_users",
+    "user:read:blocked_users",
+}
+timeout_scope: set = {"bits:read"}
+
+# MongoDB
+db_address: str = "localhost"
+db_port: int = 27017
+
+# ユーザー取得設定
+init_id: int = 790100000
+count: int = 100
+
+# 削除するユーザー
+ban_user: list = []
+
+# Discord Webhook
+discord_url: str = ""

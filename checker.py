@@ -1,8 +1,6 @@
 import asyncio
 import datetime
-import os
 import re
-import sys
 
 import aiofiles
 import aiohttp
@@ -36,7 +34,6 @@ class Checker:
         self.ban_queue = asyncio.Queue()
         self.retry_queue = asyncio.Queue()
 
-
     async def start(self):
         self.session = aiohttp.ClientSession(json_serialize=json.dumps)
 
@@ -58,13 +55,12 @@ class Checker:
         asyncio.create_task(self._retry_ban_task())
         asyncio.create_task(self.stopper())
 
-
     async def stopper(self):
-        async with aiofiles.open(self.stop_json, 'r') as f:
+        async with aiofiles.open(self.stop_json, "r") as f:
             json_ = json.loads(await f.read())
-        if json_['stop']:
-            json_['stop'] = False
-            async with aiofiles.open(self.stop_json, 'w') as f:
+        if json_["stop"]:
+            json_["stop"] = False
+            async with aiofiles.open(self.stop_json, "w") as f:
                 await f.write(json.dumps(json_, indent=4))
         while True:
             async with aiofiles.open(self.stop_json, "r") as f:
@@ -72,18 +68,17 @@ class Checker:
             if json_["stop"]:
                 logger.info("Stop Task Start")
                 self.stop = True
-                json_['stop'] = False
-                async with aiofiles.open(self.stop_json, 'w') as f:
+                json_["stop"] = False
+                async with aiofiles.open(self.stop_json, "w") as f:
                     await f.write(json.dumps(json_, indent=4))
                 break
             else:
                 await asyncio.sleep(5)
         while not self.stoped:
             await asyncio.sleep(0)
-        logger.info('STOP')
+        logger.info("STOP")
         loop = asyncio.get_running_loop()
         loop.stop()
-
 
     async def _fetch_client_credentials(self) -> bool:
         URL = "https://id.twitch.tv/oauth2/token"
@@ -105,7 +100,9 @@ class Checker:
             self.token = data["access_token"]
             _db = await self.db_checker.find_one({"name": "token"})
             if _db:
-                await self.db_checker.replace_one({"name": "token"}, {"name": "token", "token": self.token})  # fmt: skip
+                await self.db_checker.replace_one(
+                    {"name": "token"}, {"name": "token", "token": self.token}
+                )
             else:
                 await self.db_checker.insert_one({"name": "token", "token": self.token})
             break
@@ -115,6 +112,11 @@ class Checker:
 
         return True
 
+    async def _fetch_token_verification(self, token: str) -> int:
+        URL = "https://id.twitch.tv/oauth2/validate"
+        headers = {"Authorization": f"OAuth {token}"}
+        async with self.session.get(URL, headers=headers) as res:
+            return res.status
 
     async def _fetch_refresh_token(self, user: dict) -> str:
         URL = "https://id.twitch.tv/oauth2/token"
@@ -133,9 +135,11 @@ class Checker:
                     data: dict = json.loads(await res.read())
                     break
                 elif res.status == 401 or res.status == 400:
-                    logger.info(f"User Delete name: {user['login']} id: {user['user_id']}")  # fmt: skip
+                    logger.info(
+                        f"User Delete name: {user['login']} id: {user['user_id']}"
+                    )
                     await self.db_user.delete_one({"user_id": user["user_id"]})
-                    return ''
+                    return ""
                 else:
                     await asyncio.sleep(i)
                     continue
@@ -143,7 +147,7 @@ class Checker:
             logger.error(f"Token Refresh Error")
             logger.error(f"user_name: {user['login']}")
             logger.error(f"status: {res.status}")
-            return ''
+            return ""
 
         user_info = await self._fetch_user_info(data["access_token"], user["client_id"])
 
@@ -151,14 +155,15 @@ class Checker:
             "access_token": data["access_token"],
             "refresh_token": data["refresh_token"],
             "client_id": user["client_id"],
-            "login": user_info['data'][0]["login"],
-            "user_id": user_info['data'][0]["id"],
+            "login": user_info["data"][0]["login"],
+            "user_id": user_info["data"][0]["id"],
             "scope": data["scope"],
         }
 
-        await self.db_user.replace_one({"user_id": user_info['data'][0]["id"]}, new_token)
+        await self.db_user.replace_one(
+            {"user_id": user_info["data"][0]["id"]}, new_token
+        )
         return data["access_token"]
-
 
     async def _fetch_user_info(self, token: str, client_id: str) -> dict:
         URL = "https://api.twitch.tv/helix/users"
@@ -172,7 +177,6 @@ class Checker:
                     continue
         else:
             return {}
-
 
     async def _fetch_new_user(self) -> None:
         URL = "https://api.twitch.tv/helix/users?"
@@ -206,7 +210,6 @@ class Checker:
         self.ban_queue.put_nowait("stop")
         return
 
-
     async def _id_check(self, data: list) -> None:
         id_list: list[int] = []
         for user in data:
@@ -220,11 +223,12 @@ class Checker:
         self.last_id = max(id_list)
         db_result = await self.db_checker.find_one({"name": "last_id"})
         if db_result:
-            await self.db_checker.replace_one({"name": "last_id"}, {"name": "last_id", "id": self.last_id})  # fmt: skip
+            await self.db_checker.replace_one(
+                {"name": "last_id"}, {"name": "last_id", "id": self.last_id}
+            )
         else:
             await self.db_checker.insert_one({"name": "last_id", "id": self.last_id})
         return
-
 
     async def _ban_task(self):
         while True:
@@ -245,44 +249,52 @@ class Checker:
         self.retry_queue.put_nowait("stop")
         return
 
-
     async def _retry_ban_task(self):
         while True:
             retry_task = await self.retry_queue.get()
             if retry_task == "stop":
                 break
-            
-            if retry_task['retry_count'] > 3:
+
+            if retry_task["retry_count"] > 3:
                 continue
-            
-            retry_task['retry_count'] += 1
-            
-            db_data = await self.db_user.find_one({'user_id': retry_task['user']['user_id']})
-            token = retry_task['user']['access_token']
-            
+
+            retry_task["retry_count"] += 1
+
+            db_data = await self.db_user.find_one(
+                {"user_id": retry_task["user"]["user_id"]}
+            )
+
             if not db_data:
                 continue
-            
-            if retry_task['code'] == 401:
-                if db_data['access_token'] == token:
-                    token = await self._fetch_refresh_token(retry_task['user'])
-                    if not token:
-                        continue
-                else:
-                    token = db_data['access_token']
-            
-            retry_task['user']['access_token'] = token
-            
-            if retry_task['method'] == 'ban':
-                ratelimit = await self._request_ban(retry_task['ban_user'], retry_task['user'], retry_task['retry_count'])
-            elif retry_task['method'] == 'block':
-                ratelimit = await self._request_block(retry_task['ban_user'], retry_task['user'], retry_task['retry_count'])
-            
+
+            verification = await self._fetch_token_verification(db_data["access_token"])
+
+            if verification != 200:
+                token = await self._fetch_refresh_token(retry_task["user"])
+                if not token:
+                    continue
+            else:
+                token = db_data["access_token"]
+
+            retry_task["user"]["access_token"] = token
+
+            if retry_task["method"] == "ban":
+                ratelimit = await self._request_ban(
+                    retry_task["ban_user"],
+                    retry_task["user"],
+                    retry_task["retry_count"],
+                )
+            elif retry_task["method"] == "block":
+                ratelimit = await self._request_block(
+                    retry_task["ban_user"],
+                    retry_task["user"],
+                    retry_task["retry_count"],
+                )
+
             interval = 1 if ratelimit > 100 else 10
             await asyncio.sleep(interval)
         self.stoped = True
         return
-
 
     async def _request_ban(self, ban_user: dict, user: dict, retry: int = 0) -> int:
         URL = "https://api.twitch.tv/helix/moderation/bans"
@@ -296,23 +308,16 @@ class Checker:
         if "bits:read" in user["scope"]:
             body["data"]["duration"] = 64800
 
-        async with self.session.post(URL, params=params, headers=headers, json=body) as res: # fmt: skip
+        async with self.session.post(
+            URL, params=params, headers=headers, json=body
+        ) as res:
 
             ratelimit = int(res.headers.get("ratelimit-remaining", 800))
 
             if res.status == 200:
                 return ratelimit
 
-            elif res.status == 400 or res.status == 403:
-                logger.error(f"Ban Error code:{res.status}")
-                logger.error(f"user: {user}")
-                logger.error(f"ban_user: {ban_user}")
-                return ratelimit
-
             else:
-                logger.error(f"Ban Error code:{res.status}")
-                logger.error(f"user: {user}")
-                logger.error(f"ban_user: {ban_user}")
                 data = {
                     "method": "ban",
                     "retry_count": retry,
@@ -323,7 +328,6 @@ class Checker:
                 }
                 self.retry_queue.put_nowait(data)
                 return ratelimit
-
 
     async def _request_block(self, ban_user: dict, user: dict, retry: int = 0) -> int:
         URL = "https://api.twitch.tv/helix/users/blocks"
@@ -350,31 +354,31 @@ class Checker:
                 }
                 self.retry_queue.put_nowait(data)
                 return ratelimit
-    
-    
+
     async def discord_hook(self, ban_user: dict) -> None:
-        created_at = parser.isoparse(ban_user['created_at'])
+        created_at = parser.isoparse(ban_user["created_at"])
         created_at_jst = created_at + datetime.timedelta(hours=9)
+        # fmt: off
         body = {
             "embeds": [
                 {
-                    "title": ban_user['login'],
-                    'url': f"https://www.twitch.tv/{ban_user['login']}",
-                    "timestamp": (datetime.datetime.utcnow()).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                    "color": 0xff0000,
-                    "thumbnail": {
-                        "url": ban_user['profile_image_url']
-                    },
+                    "title": ban_user["login"],
+                    "url": f"https://www.twitch.tv/{ban_user['login']}",
+                    "timestamp": (datetime.datetime.utcnow()).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    "color": 0xFF0000,
+                    "thumbnail": {"url": ban_user["profile_image_url"]},
                     "fields": [
                         {
                             "name": "✒️login id",
                             "value": ban_user["login"],
-                            "inline": True
+                            "inline": True,
                         },
                         {
                             "name": "📺display name",
                             "value": ban_user["display_name"],
-                            "inline": True
+                            "inline": True,
                         },
                         {
                             "name": "🆔id",
@@ -383,12 +387,13 @@ class Checker:
                         },
                         {
                             "name": "🕰️created at (JST)",
-                            "value": created_at_jst.strftime('%Y/%m/%d %H:%M:%S'),
-                            "inline": True
-                        }
-                    ]
+                            "value": created_at_jst.strftime("%Y/%m/%d %H:%M:%S"),
+                            "inline": True,
+                        },
+                    ],
                 }
             ]
         }
+        # fmt: on
         res = await self.session.post(config.discord_url, json=body)
         res.close()
